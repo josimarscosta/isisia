@@ -200,7 +200,7 @@ if executar_previsao and valid_dates:
                     df_shap_sorted.head(15),
                     x="Contribuição SHAP (BRL)",
                     y="Fator",
-                    orientation="h",,
+                    orientation="h",
                     title="Impacto dos Fatores na Previsão de Custo (SHAP)",
                     labels={"Contribuição SHAP (BRL)": "Contribuição para o Custo (em BRL)", "Fator": "Fator da Previsão"}
                 )
