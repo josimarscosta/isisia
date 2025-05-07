@@ -374,4 +374,3 @@ if __name__ == "__main__":
                 print(f"    Resultado: {previsao}")
             except Exception as e:
                 print(f"    Erro na previsão com {model_name}: {e}")
-
