@@ -95,7 +95,7 @@ st.sidebar.divider()
 st.sidebar.subheader("Configuração do Modelo e Saída")
 modelo_selecionado = st.sidebar.selectbox(
     "Modelo Preditivo",
-    ["random_forest", "linear_regression"],
+    ["random_forest", "linear_regression", "gradient_boosting", "mlp_regressor"],
     index=0,
     help="Escolha o modelo de Machine Learning para a previsão (base em BRL)."
 )
@@ -153,11 +153,18 @@ if executar_previsao and valid_dates:
             with col2_met:
                 st.metric(label=f"Custo por Tonelada ({moeda})", value=f"{custo_ton:,.2f}")
 
-            # Exibir taxa de câmbio aplicada
+            # Exibir taxa de câmbio aplicada de forma destacada
             if cambio_aplicado:
-                cambio_key = list(cambio_aplicado.keys())[0]
-                cambio_value = list(cambio_aplicado.values())[0]
-                st.caption(f"Taxa de câmbio aplicada (tempo real): 1 {cambio_key.split('_')[0]} = {cambio_value:.4f} {cambio_key.split('_')[-1]}")
+                cambio_key = list(cambio_aplicado.keys())[0] # Ex: "BRL_para_EUR"
+                cambio_value = list(cambio_aplicado.values())[0] # Ex: 0.1818
+                moeda_base = cambio_key.split('_')[0]
+                moeda_destino_cambio = cambio_key.split('_')[-1]
+                
+                st.markdown("---") # Divisor
+                st.markdown(f"#### Taxa de Câmbio Aplicada")
+                st.markdown(f"**1 {moeda_base} = {cambio_value:.4f} {moeda_destino_cambio}**")
+                st.caption(f"Fonte: AwesomeAPI (tempo real no momento da consulta) ou fallback em caso de falha na API.")
+                st.markdown("---") # Divisor
 
             # Exibir métricas do modelo (ainda são do modelo base em BRL)
             if metricas and isinstance(metricas, dict):
@@ -171,6 +178,35 @@ if executar_previsao and valid_dates:
                          except (ValueError, TypeError):
                              st.metric(label=f"{key.upper()}", value=str(value))
                      i += 1
+
+            # Exibir SHAP values se disponíveis (para Random Forest)
+            shap_values = resultado_previsao.get("shap_values")
+            if shap_values and modelo_usado == "Random Forest":
+                st.markdown("---")
+                st.subheader(f"Interpretabilidade da Previsão (SHAP Values) - {modelo_usado}")
+                st.markdown("Os valores SHAP indicam a contribuição de cada fator para a previsão de custo. Valores positivos aumentam o custo, negativos diminuem.")
+                
+                df_shap = pd.DataFrame(list(shap_values.items()), columns=["Fator", "Contribuição SHAP (BRL)"])
+                # Ordenar pela magnitude da contribuição para destacar os mais importantes
+                df_shap["Magnitude"] = df_shap["Contribuição SHAP (BRL)"].abs()
+                df_shap_sorted = df_shap.sort_values(by="Magnitude", ascending=False).drop(columns=["Magnitude"])
+                
+                # Exibir tabela com os top N SHAP values
+                st.markdown("**Principais Fatores Impactantes na Previsão:**")
+                st.dataframe(df_shap_sorted.head(10).style.format({"Contribuição SHAP (BRL)": "{:.2f}"}))
+
+                # Gráfico de barras para SHAP values (top N)
+                fig_shap = px.bar(
+                    df_shap_sorted.head(15),
+                    x="Contribuição SHAP (BRL)",
+                    y="Fator",
+                    orientation=\"h\",
+                    title="Impacto dos Fatores na Previsão de Custo (SHAP)",
+                    labels={"Contribuição SHAP (BRL)": "Contribuição para o Custo (em BRL)", "Fator": "Fator da Previsão"}
+                )
+                fig_shap.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_shap, use_container_width=True)
+                st.markdown("---")
 
             st.subheader(f"Composição Estimada dos Custos ({moeda})")
             if composicao:

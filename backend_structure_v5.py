@@ -8,12 +8,14 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor # Adicionado GradientBoostingRegressor
+from sklearn.neural_network import MLPRegressor # Adicionado MLPRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import joblib
 import datetime
 import requests
 import json
+import shap # Adicionado para SHAP
 
 # --- Configurações (v5) ---
 MODEL_PATH_PREFIX = "modelo_custo_v5"
@@ -180,8 +182,8 @@ def preprocessar_dados(df):
     df_processed = pd.get_dummies(df, columns=categorical_cols, drop_first=True)
     return df_processed
 
-def treinar_modelos(df_processed, model_types=["linear_regression", "random_forest"]):
-    """Treina múltiplos modelos de ML (v5), avalia e salva cada um."""
+def treinar_modelos(df_processed, model_types=["linear_regression", "random_forest", "gradient_boosting", "mlp_regressor"]):
+    """Treina múltiplos modelos de ML (v5), incluindo Gradient Boosting e MLP, avalia e salva cada um."""
     if "custo_total_logistico_brl" not in df_processed.columns:
         raise ValueError("Coluna alvo 'custo_total_logistico_brl' não encontrada no DataFrame processado.")
     X = df_processed.drop("custo_total_logistico_brl", axis=1)
@@ -197,6 +199,11 @@ def treinar_modelos(df_processed, model_types=["linear_regression", "random_fore
         elif model_type == "random_forest":
             # Hiperparâmetros podem precisar de ajuste com mais features
             model = RandomForestRegressor(n_estimators=180, random_state=42, n_jobs=-1, max_depth=22, min_samples_split=6)
+        elif model_type == "gradient_boosting": # Adicionado Gradient Boosting
+            model = GradientBoostingRegressor(n_estimators=150, learning_rate=0.1, max_depth=5, random_state=42)
+        elif model_type == "mlp_regressor": # Adicionado MLP Regressor
+            # Hiperparâmetros básicos, podem precisar de ajuste e mais tempo de treino
+            model = MLPRegressor(hidden_layer_sizes=(100, 50), max_iter=500, random_state=42, early_stopping=True, n_iter_no_change=10)
         else:
             continue
 
@@ -278,6 +285,20 @@ def prever_custo(input_data, model_type="random_forest"):
     # Previsão (em BRL)
     custo_predito_brl = model.predict(input_df_processed)[0]
 
+    # Calcular SHAP values se o modelo for RandomForestRegressor
+    shap_values_dict = None
+    if isinstance(model, RandomForestRegressor):
+        try:
+            explainer = shap.TreeExplainer(model)
+            shap_values_instance = explainer.shap_values(input_df_processed)
+            # Para uma única instância, shap_values_instance pode ser um array 1D
+            # Mapear para nomes de colunas
+            shap_values_dict = dict(zip(model_columns, shap_values_instance[0]))
+        except Exception as e_shap:
+            print(f"Erro ao calcular SHAP values: {e_shap}")
+            # Continuar sem SHAP values em caso de erro
+            shap_values_dict = None
+
     # Obter taxas de câmbio atuais
     live_rates = get_exchange_rates()
     usd_brl_rate = live_rates["USD_BRL"]
@@ -322,7 +343,8 @@ def prever_custo(input_data, model_type="random_forest"):
         "modelo_utilizado": model_type.replace("_", " ").title(),
         "metricas_modelo": model_metrics,
         "periodo_previsao": periodo_str,
-        "taxa_cambio_aplicada": applied_rate_info
+        "taxa_cambio_aplicada": applied_rate_info,
+        "shap_values": shap_values_dict  # Adicionado SHAP values
     }
 
     return output
