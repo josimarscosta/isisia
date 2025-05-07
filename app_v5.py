@@ -261,4 +261,3 @@ elif not valid_dates:
 
 st.divider()
 st.markdown("Desenvolvido como MVP (v5) para o projeto ISIS IA.")
-
